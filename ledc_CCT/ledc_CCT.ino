@@ -19,10 +19,23 @@ uint8_t potiWarm = 33;
 uint8_t ledArray[3] = {1, 2}; // we have two led channels
 
 bool fadedIn = false;
-uint8_t iLedWhiteTarget = 4095; // the target brightness of White LEDs
-uint8_t iLedWarmTarget = 4095; // the target brightness of Warm White LEDs
-uint32_t iLedWhite = 0; 
-uint32_t iLedWarm = 0; 
+uint16_t iLedWhiteTarget = 4095; // the target brightness of White LEDs
+uint16_t iLedWarmTarget = 4095; // the target brightness of Warm White LEDs
+uint8_t iLedWhite = 0; 
+uint8_t iLedWarm = 0; 
+
+// software smooting pot inputs
+const int numReadings = 20;
+
+uint16_t readingsWhite[numReadings];      // the readings from the analog input
+uint16_t averageWhite = 0;                // the average
+uint32_t totalWhite = 0;                  // the running total
+
+uint16_t readingsWarm[numReadings];            
+uint16_t averageWarm = 0;         
+uint32_t totalWarm = 0;   
+
+uint8_t readIndex = 0;
 
 // the setup routine runs once when you press reset:
 void setup() 
@@ -44,12 +57,21 @@ void setup()
   // we utilize here 12 bits, since the analog read from out poti is also in 12 bits.
   // means we could use the input directly to drive our PWM duty.
   // but could cause flickering due to small changes on the value
+
+  for (int thisReading = 0; thisReading < numReadings; thisReading++) {
+    readingsWhite[thisReading] = 0;
+    readingsWarm[thisReading] = 0;
+  }
   
 }
 
 void loop() 
 {
 
+  /*
+   *  Fade in
+   * 
+   */
   // on a fresh start, fade ma LEDs in to the correct poti value
   if(!fadedIn){
     Serial.println("Fading LEDs in");
@@ -61,17 +83,55 @@ void loop()
   }
   fadedIn = true;
 
-  // debuging
+
+  /*
+   *  Software Smooting
+   * 
+   */
+  // subtract the last reading:
+  totalWhite = totalWhite - readingsWhite[readIndex];
+  totalWarm = totalWarm - readingsWarm[readIndex];
+
+  // read from the sensor:
+  readingsWhite[readIndex] = analogRead(potiWhite);
+  readingsWarm[readIndex] = analogRead(potiWarm);
+  // add the reading to the total:
+  totalWhite = totalWhite + readingsWhite[readIndex];
+  totalWarm = totalWarm + readingsWarm[readIndex];
+
+  // advance to the next position in the array:
+  readIndex = readIndex + 1;
+  delay(1);
+
+  // if we're at the end of the array...
+  if (readIndex >= numReadings) {
+    // ...wrap around to the beginning:
+    readIndex = 0;
+  }
+
+  // calculate the average:
+  averageWhite = round(totalWhite / numReadings);
+  averageWarm = round(totalWarm / numReadings);
+
+
+  /*
+   *  Debug
+   * 
+   */
   Serial.print("White: ");
-  Serial.print(analogRead(potiWhite));
+  Serial.print(averageWhite);
   Serial.print("\nWarm: ");
-  Serial.print(analogRead(potiWarm));
+  Serial.print(averageWarm);
   
   Serial.println("\n---\n");
 
+  /*
+   *  Write it
+   * 
+   */
   // directly writing that value, but it may be flickering due to small changes on these values.. we should smooth that out
-  ledcWrite(1, analogRead(potiWhite));
-  ledcWrite(2, analogRead(potiWarm));
+  ledcWrite(1, averageWhite);
+  ledcWrite(2, averageWarm);
   delay(1);
  
 }
